@@ -1,0 +1,19 @@
+services:
+  ros-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mounts the project root folder into the container
+      - ..:/workspace:cached
+      # Shares your host's X11 server display socket
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+    # Share IPC with the host for high-speed local ROS 2 shared memory communication
+    ipc: host
+    # Host-network mode is critical for ROS 2 DDS/Zenoh topic discovery
+    network_mode: host
+    # Keeps the container running in the background
+    command: sleep infinity
