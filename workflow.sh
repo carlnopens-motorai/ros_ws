@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-###
-###  this script should be placed in ~/calibration/data directory ;; just saving here
-###
-
 # ==============================================================================
 #  CONFIGURABLE VARIABLES (Adjust these to match your setup)
 # ==============================================================================
@@ -172,40 +168,43 @@ step_play_bag() {
         esac
     fi
 
-    local relative_path=$(realpath --relative-to="$HOST_DATA_DIR" "$ACTIVE_BAG_HOST")
+    # --- SMART TOP-LEVEL FOLDER RESOLUTION ---
+    local bag_folder_host="$ACTIVE_BAG_HOST"
+    if [ -f "$ACTIVE_BAG_HOST" ]; then
+        local parent_dir=$(dirname "$ACTIVE_BAG_HOST")
+        if [ -f "${parent_dir}/metadata.yaml" ]; then
+            bag_folder_host="$parent_dir"
+        fi
+    fi
+
+    local relative_path=$(realpath --relative-to="$HOST_DATA_DIR" "$bag_folder_host")
     local container_bag_path="${ROS2_DATA_DIR}/${relative_path}"
 
     log_info "Launching RViz2 inside $ROS2_CONTAINER..."
-    
-    # We define a log path so we can capture any GUI or OpenGL errors
     local rviz_log="${RESULTS_DIR}/rviz2_launch.log"
     local container_rviz_log="/data/results/rviz2_launch.log"
 
-    # Spin up RViz2 in a detached thread with GUI-stabilizing environment variables
     docker exec \
         -e DISPLAY="$DISPLAY" \
         -e QT_X11_NO_MITSHM=1 \
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         -d "$ROS2_CONTAINER" bash -c "
             source /ros_entrypoint.sh 2>/dev/null || source /opt/ros/humble/setup.bash 2>/dev/null || source /opt/ros/rolling/setup.bash 2>/dev/null || source /opt/ros/jazzy/setup.bash 2>/dev/null || true
-            rviz2 -d /workspace/config.rviz > '$container_rviz_log' 2>&1
+            rviz2 -d workspace/config.rviz > '$container_rviz_log' 2>&1
         "
     
-    # Give RViz2 two seconds to initialize UI and windows before starting the bag
     sleep 2
 
-    log_info "Playing bag inside $ROS2_CONTAINER..."
+    log_info "Playing bag from folder inside $ROS2_CONTAINER..."
     log_warn "Press [Ctrl + C] in this terminal window to stop playback (which also closes RViz)."
     echo "--------------------------------------------------------"
     
-    # Execute bag playback interactively
     docker exec -it "$ROS2_CONTAINER" bash -c "
         source /ros_entrypoint.sh
         ros2 bag play '$container_bag_path'
     "
     local exit_code=$?
 
-    # Clean up and close RViz2 inside the container once playback completes/stops
     log_info "Closing RViz2..."
     docker exec "$ROS2_CONTAINER" pkill -f rviz2 2>/dev/null || true
     echo "--------------------------------------------------------"
@@ -217,7 +216,7 @@ step_play_bag() {
     read -p "Press Enter to continue..."
 }
 
-# Step 2: Crop Bag
+# Step 2: Crop Bag (With Smart Folder Handovers)
 step_crop_bag() {
     show_status
     log_info "Step 2: Crop MCAP Bag"
@@ -229,32 +228,49 @@ step_crop_bag() {
         ACTIVE_BAG_TYPE="mcap"
     fi
 
-    # Set default expected output name for path handover tracking
-    local base_name=$(basename "$ACTIVE_BAG_HOST" .mcap)
-    local cropped_base="${base_name}_cropped.mcap"
+    # --- SMART TOP-LEVEL FOLDER RESOLUTION ---
+    local bag_folder_host="$ACTIVE_BAG_HOST"
+    if [ -f "$ACTIVE_BAG_HOST" ]; then
+        local parent_dir=$(dirname "$ACTIVE_BAG_HOST")
+        if [ -f "${parent_dir}/metadata.yaml" ]; then
+            bag_folder_host="$parent_dir"
+        fi
+    fi
+
+    local relative_path=$(realpath --relative-to="$HOST_DATA_DIR" "$bag_folder_host")
+    local container_bag_path="${ROS2_DATA_DIR}/${relative_path}"
     
+    local tracker_file="${HOST_DATA_DIR}/.last_crop_out"
+    rm -f "$tracker_file"
+
     log_info "Running cropping script inside ROS2 container..."
     log_info "Please respond directly to the Python script prompts below:"
     echo "--------------------------------------------------------"
     
-    # Run the Python script with sourced environment, forcing the working directory to /data
-    docker exec -it -w /data "$ROS2_CONTAINER" bash -c "
-        source /ros_entrypoint.sh
-        python3 '$ROS2_CROP_SCRIPT'
-    "
+    docker exec -it -w /data \
+        -e DEFAULT_INPUT_BAG="$container_bag_path" \
+        "$ROS2_CONTAINER" bash -c "
+            source /ros_entrypoint.sh
+            python3 '$ROS2_CROP_SCRIPT'
+        "
 
-    if [ $? -eq 0 ]; then
-        echo "--------------------------------------------------------"
-        echo ""
-        read -p "What is the filename of the cropped file that was generated? [Enter to accept '${cropped_base}']: " user_cropped_name
-        if [ -n "$user_cropped_name" ]; then
-            cropped_base="$user_cropped_name"
-        fi
-        ACTIVE_BAG_HOST="${HOST_DATA_DIR}/${cropped_base}"
+    local run_status=$?
+    echo "--------------------------------------------------------"
+    echo ""
+
+    if [ $run_status -eq 0 ] && [ -f "$tracker_file" ]; then
+        local raw_output_path=$(cat "$tracker_file" | tr -d '\r\n')
+        local relative_output="${raw_output_path#"$ROS2_DATA_DIR/"}"
+        
+        # Set the newly cropped bag folder as our active bag!
+        ACTIVE_BAG_HOST="${HOST_DATA_DIR}/${relative_output}"
         ACTIVE_BAG_TYPE="mcap"
-        log_success "Successfully cropped! New active bag is: $(basename "$ACTIVE_BAG_HOST")"
+        
+        rm -f "$tracker_file"
+        log_success "Successfully cropped! New active bag folder is: $(basename "$ACTIVE_BAG_HOST")"
     else
-        log_error "Cropping failed."
+        log_error "Cropping failed or was cancelled."
+        rm -f "$tracker_file"
     fi
     read -p "Press Enter to continue..."
 }
@@ -271,16 +287,25 @@ step_convert_bag() {
         ACTIVE_BAG_TYPE="mcap"
     fi
 
-    local relative_path=$(realpath --relative-to="$HOST_DATA_DIR" "$ACTIVE_BAG_HOST")
+    # --- SMART TOP-LEVEL FOLDER RESOLUTION ---
+    local bag_folder_host="$ACTIVE_BAG_HOST"
+    if [ -f "$ACTIVE_BAG_HOST" ]; then
+        local parent_dir=$(dirname "$ACTIVE_BAG_HOST")
+        if [ -f "${parent_dir}/metadata.yaml" ]; then
+            bag_folder_host="$parent_dir"
+        fi
+    fi
+
+    local relative_path=$(realpath --relative-to="$HOST_DATA_DIR" "$bag_folder_host")
     local container_input_path="${ROS2_DATA_DIR}/${relative_path}"
     
-    local base_name=$(basename "$ACTIVE_BAG_HOST" .mcap)
+    # Use the folder name as the base name for the output ROS1 bag
+    local base_name=$(basename "$bag_folder_host" .mcap)
     local ros1_bag_name="${base_name}.bag"
     local container_output_path="${ROS2_DATA_DIR}/${ros1_bag_name}"
 
-    log_info "Converting MCAP to ROS1 .bag..."
+    log_info "Converting MCAP folder to ROS1 .bag..."
     
-    # Run the converting command inside the ROS2 Container with sourced environment
     docker exec -it "$ROS2_CONTAINER" bash -c "
         source /workspace/.venv/bin/activate 2>/dev/null || true
         rosbags-convert --src '$container_input_path' --dst '$container_output_path'
@@ -289,7 +314,7 @@ step_convert_bag() {
     if [ $? -eq 0 ]; then
         ACTIVE_BAG_HOST="${HOST_DATA_DIR}/${ros1_bag_name}"
         ACTIVE_BAG_TYPE="bag"
-        log_success "Conversion successful! New active bag is: $(basename "$ACTIVE_BAG_HOST")"
+        log_success "Conversion successful! New active ROS1 bag is: $(basename "$ACTIVE_BAG_HOST")"
     else
         log_error "Conversion failed."
     fi

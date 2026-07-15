@@ -61,11 +61,26 @@ def main():
     print("         ROS 2 Bag Cropping Tool (Offline)        ")
     print("==================================================")
 
+    # Retrieve the default input bag path from the host environment
+    DEFAULT_INPUT_BAG = os.environ.get("DEFAULT_INPUT_BAG", "")
+    
     # 1. Ask for input bag folder
     while True:
-        input_bag = input("📁 Enter input ROS 2 bag path: ").strip()
-        if not input_bag:
-            continue
+        # Change this to display and accept the default path
+        prompt_text = "📁 Enter input ROS 2 bag path"
+        if DEFAULT_INPUT_BAG:
+            prompt_text += f" [Default: {DEFAULT_INPUT_BAG}]"
+        prompt_text += ": "
+
+        user_input = input(prompt_text).strip()
+
+        # If user pressed Enter and we have a default, use it!
+        if not user_input and DEFAULT_INPUT_BAG:
+            input_bag_path = DEFAULT_INPUT_BAG
+        else:
+            input_bag_path = user_input or "/data" # Fallback if both empty
+        
+        input_bag = input_bag_path
         
         metadata_file = find_metadata_file(input_bag)
         if metadata_file:
@@ -125,6 +140,15 @@ def main():
         output_bag = default_output
 
     output_bag_abs = os.path.abspath(output_bag)
+
+    # Write the final output path to a temporary tracker file in /data
+    # (Replace 'output_bag_path' with the actual variable holding your output path)
+    output_bag_path = output_bag
+    try:
+        with open("/data/.last_crop_out", "w") as f:
+            f.write(output_bag_path)
+    except Exception as e:
+        print(f"⚠️ Could not write tracker file: {e}")
 
     # 6. Calculate absolute nanosecond values
     crop_start_ns = start_ns + int(crop_start_sec * 1e9)
