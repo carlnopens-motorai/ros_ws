@@ -14,5 +14,5 @@
     }
   },
   "remoteUser": "rosuser",
-  "postCreateCommand": "sudo chown -R rosuser:rosuser /workspace"
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
 }

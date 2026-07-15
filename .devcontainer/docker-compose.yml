@@ -6,6 +6,7 @@ services:
     volumes:
       # Mounts the project root folder into the container
       - ..:/workspace:cached
+      - /home/${USER}/calibration/data:/data:cached
       # Shares your host's X11 server display socket
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

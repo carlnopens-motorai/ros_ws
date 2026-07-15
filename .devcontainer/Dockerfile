@@ -7,6 +7,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     ros-kilted-plotjuggler-ros \
     dbus-x11 \
+    python3-pip \
+    python3-venv \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
