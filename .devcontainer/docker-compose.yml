@@ -8,6 +8,10 @@ services:
       - ..:/workspace:cached
       # Shares your host's X11 server display socket
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/dri:/dev/dri
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
