@@ -7,15 +7,22 @@ services:
       # Mounts the project root folder into the container
       - ..:/workspace:cached
       - /home/${USER}/calibration/data:/data:cached
+      # Host data directory for bags/exports
+      - /mnt/data:/mnt/data:cached
       # Shares your host's X11 server display socket
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/dri:/dev/dri
+      # X11 auth cookie: containers share the host X socket but carry no cookie, so the
+      # server rejects them ("Authorization required"). Host ~/.bashrc regenerates this
+      # wildcard cookie each login (it changes per X session); mount it read-only.
+      - ${HOME}/.docker.xauth:/tmp/.docker.xauth:ro
     devices:
       - /dev/dri:/dev/dri
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/tmp/.docker.xauth
     # Share IPC with the host for high-speed local ROS 2 shared memory communication
     ipc: host
     # Host-network mode is critical for ROS 2 DDS/Zenoh topic discovery

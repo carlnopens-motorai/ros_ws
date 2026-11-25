@@ -14,5 +14,8 @@
     }
   },
   "remoteUser": "rosuser",
+  "containerEnv": {
+    "DISPLAY": ":1"
+  },
   "postCreateCommand": "bash .devcontainer/post-create.sh"
 }
