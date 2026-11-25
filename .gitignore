@@ -49,3 +49,7 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
+
+# Local bags and analysis output: keep the folder, ignore its contents
+/rosbags/*
+!/rosbags/.gitkeep
